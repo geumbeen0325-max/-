@@ -18,6 +18,7 @@ import {
 import { createArticle, extractFromFile, extractFromUrl, type ExtractResult } from "@/lib/api";
 import { analyzeDraft, autoLink, draftToInput, emptyDraft, type Draft } from "@/lib/draft";
 import { detectKind } from "@/lib/source-kind";
+import { uploadSourceFile } from "@/lib/files";
 import type { SourceKind } from "@/lib/types";
 import { cn, isValidUrl } from "@/lib/utils";
 import ArticleForm from "./ArticleForm";
@@ -84,6 +85,9 @@ export default function RegisterWorkspace({ defaultParentId }: { defaultParentId
   const [items, setItems] = useState<Item[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+
+  /** 자료 id → 넣은 원본 파일 (저장 시 Storage에 올림) */
+  const sourceFiles = useRef(new Map<string, File>());
 
   /* ───── 동시 처리 개수 제한 ───── */
   const queue = useRef<(() => Promise<void>)[]>([]);
@@ -177,13 +181,14 @@ export default function RegisterWorkspace({ defaultParentId }: { defaultParentId
       const valid = files.filter((f) => !isJunkFile(f.name));
       if (valid.length > MAX_FILES) setNotice(`한 번에 최대 ${MAX_FILES}개까지 넣을 수 있어 앞의 ${MAX_FILES}개만 추가했어요.`);
       enqueue(
-        valid.slice(0, MAX_FILES).map((f) => ({
-          item: base(fileLabel(f), detectKind(f.name, f.type), {
+        valid.slice(0, MAX_FILES).map((f) => {
+          const item = base(fileLabel(f), detectKind(f.name, f.type), {
             title: f.name.replace(/\.[^.]+$/, ""),
             source: { kind: detectKind(f.name, f.type), fileName: fileLabel(f), fileSize: f.size },
-          }),
-          extract: () => extractFromFile(f),
-        })),
+          });
+          sourceFiles.current.set(item.id, f); // 저장할 때 원본 파일도 함께 올린다
+          return { item, extract: () => extractFromFile(f) };
+        }),
       );
     },
     [base, enqueue],
@@ -262,7 +267,18 @@ export default function RegisterWorkspace({ defaultParentId }: { defaultParentId
     if (!selected) return;
     // 같이 넣은 자료가 먼저 저장됐을 수 있으므로 저장 직전에 같은 이슈를 한 번 더 찾는다
     const draft = { ...selected.draft, ...(await autoLink(selected.draft)) };
+    // 원본 파일 보관 — 실패해도 내용(추출한 본문·요약)은 저장한다
+    const file = sourceFiles.current.get(selected.id);
+    if (file && draft.source) {
+      try {
+        draft.source = { ...draft.source, storagePath: await uploadSourceFile(file), mimeType: file.type || undefined };
+      } catch (e) {
+        console.error("[upload]", e);
+        setNotice(`'${file.name}' 원본 파일은 보관하지 못했어요. 내용은 그대로 저장돼요. (${e instanceof Error ? e.message : ""})`);
+      }
+    }
     const saved = await createArticle(draftToInput(draft), draft.firstComment);
+    sourceFiles.current.delete(selected.id);
     update(selected.id, { status: "saved", savedId: saved.id, message: undefined });
     // 다음 미저장 자료로 이동 (하나만 넣었다면 상세 화면으로)
     if (items.length === 1) {
@@ -276,6 +292,7 @@ export default function RegisterWorkspace({ defaultParentId }: { defaultParentId
   }
 
   function remove(id: string) {
+    sourceFiles.current.delete(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
     if (selectedId === id) setSelectedId(items.find((i) => i.id !== id && i.status !== "saved")?.id ?? null);
   }

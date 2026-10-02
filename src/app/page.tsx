@@ -7,27 +7,20 @@ import {
   ArrowRight,
   CalendarDays,
   FileText,
-  FilePlus,
-  GitBranch,
-  LayoutGrid,
-  Link2,
   MessagesSquare,
-  RefreshCw,
   Search,
   SlidersHorizontal,
-  Sparkles,
   TriangleAlert,
 } from "lucide-react";
 import { getCommentSummaries, getUserName, listArticles, listRecentComments } from "@/lib/api";
 import { CATEGORIES, type Article } from "@/lib/types";
-import { CATEGORY_STYLE, cn, formatShortDate, timeAgo, weekRange } from "@/lib/utils";
+import { CATEGORY_STYLE, cn, timeAgo, weekRange } from "@/lib/utils";
 import Avatar from "@/components/Avatar";
 import {
   ArticleCard,
   type Discussion,
   ArticleCardSkeleton,
   CATEGORY_ICON,
-  CategoryBadge,
   CategoryFilter,
   EmptyState,
   SectionTitle,
@@ -82,14 +75,12 @@ export default function HomePage() {
             </div>
           )}
         </section>
-        <FeatureCards />
       </div>
 
       <aside className="space-y-6">
-        <RecentTimeline articles={articles} />
+        <ReportCta />
         <RecentComments />
         <QuickFilter />
-        <QuickLinks />
       </aside>
     </div>
   );
@@ -191,37 +182,10 @@ function Stats({ articles }: { articles: Article[] | null }) {
   );
 }
 
-function RecentTimeline({ articles }: { articles: Article[] | null }) {
+function ReportCta() {
   return (
     <section className="glass p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 font-bold">
-          <RefreshCw size={16} /> 이슈 타임라인
-        </h2>
-        <Link href="/timeline" className="flex items-center gap-1 text-[11px] text-ink-faint hover:text-violet-500">
-          전체 보기 <ArrowRight size={12} />
-        </Link>
-      </div>
-      <ol className="relative space-y-4 before:absolute before:bottom-2 before:left-[3px] before:top-2 before:w-px before:bg-line">
-        {(articles ?? []).slice(0, 5).map((a) => (
-          <li key={a.id} className="relative flex gap-3 pl-5">
-            <span
-              className={cn(
-                "absolute left-0 top-1.5 h-[7px] w-[7px] rounded-full ring-2 ring-white",
-                CATEGORY_STYLE[a.category].dot,
-              )}
-            />
-            <span className="w-10 shrink-0 text-xs text-ink-faint">{formatShortDate(a.createdAt)}</span>
-            <Link href={`/articles/${a.id}`} className="min-w-0 hover:text-violet-600">
-              <span className="line-clamp-1 text-[13px] font-medium">{a.title}</span>
-              <CategoryBadge category={a.category} className="mt-1" />
-            </Link>
-          </li>
-        ))}
-        {articles === null && <li className="skeleton h-40" />}
-      </ol>
-
-      <div className="mt-5 rounded-2xl bg-gradient-to-br from-rose-50 to-violet-50 p-4">
+      <div className="rounded-2xl bg-gradient-to-br from-rose-50 to-violet-50 p-4">
         <p className="flex items-start gap-2 text-xs leading-relaxed text-ink-soft">
           <TriangleAlert size={16} className="shrink-0 text-rose-400" />
           이번 주 자료를 모아 보고서로 만들 수 있어요.
@@ -230,7 +194,7 @@ function RecentTimeline({ articles }: { articles: Article[] | null }) {
           href="/briefing?auto=1"
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-400 to-fuchsia-400 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105"
         >
-          보고서 작성하기 <ArrowRight size={14} />
+          통합 보고서 작성하기 <ArrowRight size={14} />
         </Link>
       </div>
     </section>
@@ -317,88 +281,5 @@ function QuickFilter() {
         검색하기
       </button>
     </form>
-  );
-}
-
-function FeatureCards() {
-  return (
-    <section className="grid gap-4 md:grid-cols-3">
-      <Link href="/articles/new" className="glass group flex gap-4 p-5 transition hover:bg-white/85">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-400">
-          <FilePlus size={22} />
-        </span>
-        <span className="flex-1">
-          <span className="block font-bold">자료 등록하기</span>
-          <span className="mt-1 block text-xs leading-relaxed text-ink-soft">
-            링크·파일·폴더를 넣기만 하면
-            <br />
-            AI가 자동으로 요약하고 분류해줘요.
-          </span>
-          <span className="mt-3 inline-grid h-7 w-10 place-items-center rounded-full bg-violet-100 text-violet-500 transition group-hover:translate-x-1">
-            <ArrowRight size={14} />
-          </span>
-        </span>
-      </Link>
-
-      <Link href="/articles/new" className="glass flex gap-4 p-5 transition hover:bg-white/85">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-indigo-50 text-indigo-400">
-          <Sparkles size={22} />
-        </span>
-        <span className="flex-1">
-          <span className="block font-bold">AI 요약 미리보기</span>
-          <span className="mt-1 block text-xs leading-relaxed text-ink-soft">
-            본문을 붙여넣으면 3줄 요약과 분류가 자동으로 생성됩니다.
-          </span>
-          <span className="mt-3 block space-y-1.5 rounded-xl bg-white/70 p-3">
-            <span className="block text-[11px] text-ink-faint">요약 3줄</span>
-            {[1, 2, 3].map((n) => (
-              <span key={n} className="flex items-center gap-2 text-[10px] text-ink-faint">
-                {n}. <span className="h-1.5 flex-1 rounded-full bg-indigo-100" />
-              </span>
-            ))}
-          </span>
-        </span>
-      </Link>
-
-      <Link href="/briefing" className="glass flex gap-4 p-5 transition hover:bg-white/85">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-400">
-          <FileText size={22} />
-        </span>
-        <span className="flex-1">
-          <span className="block font-bold">보고서 작성</span>
-          <span className="mt-1 block text-xs leading-relaxed text-ink-soft">
-            등록된 자료를 골라
-            <br />
-            보고서 하나로 만들어보세요.
-          </span>
-        </span>
-      </Link>
-    </section>
-  );
-}
-
-function QuickLinks() {
-  const items = [
-    { href: "/search", label: "통합 검색", icon: Search },
-    { href: "/articles/new", label: "중복 등록 경고", icon: Link2 },
-    { href: "/timeline", label: "이슈 타임라인", icon: GitBranch },
-    { href: "/briefing", label: "보고서 작성", icon: FileText },
-  ];
-  return (
-    <section className="glass p-5">
-      <h2 className="mb-4 flex items-center gap-2 text-sm font-bold">
-        <LayoutGrid size={15} /> 주요 기능
-      </h2>
-      <div className="grid grid-cols-4 gap-2 xl:grid-cols-2">
-        {items.map(({ href, label, icon: Icon }) => (
-          <Link key={label} href={href} className="flex flex-col items-center gap-1.5 rounded-xl p-2 text-center hover:bg-white/70">
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-violet-400 shadow-sm">
-              <Icon size={17} />
-            </span>
-            <span className="text-[11px] text-ink-soft">{label}</span>
-          </Link>
-        ))}
-      </div>
-    </section>
   );
 }

@@ -3,29 +3,26 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
-import { ArrowLeft, CalendarDays, ExternalLink, GitBranch, Pencil, ScanSearch, Trash, User } from "lucide-react";
-import { deleteArticle, getArticle, getCurrentUser, getIssueThread, getSimilarArticles, getUserName } from "@/lib/api";
+import { ArrowLeft, CalendarDays, ExternalLink, Pencil, ScanSearch, Trash, User } from "lucide-react";
+import { deleteArticle, getArticle, getCurrentUser, getSimilarArticles, getUserName } from "@/lib/api";
 import type { SimilarityResult } from "@/lib/similarity";
 import { SimilarityBar } from "@/components/SimilarityMeter";
 import type { Article } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { CategoryBadge, CategoryThumb, EmptyState, Keywords } from "@/components/ui";
-import IssueTimeline from "@/components/IssueTimeline";
-import { SourceBadge } from "@/components/SourceIcon";
+import SourceFile from "@/components/SourceFile";
 import CommentThread from "@/components/CommentThread";
 
 export default function ArticleDetailPage({ params }: PageProps<"/articles/[id]">) {
   const { id } = use(params);
   const router = useRouter();
   const [article, setArticle] = useState<Article | null | undefined>(undefined);
-  const [thread, setThread] = useState<Article[]>([]);
   const [showBody, setShowBody] = useState(false);
   const [similar, setSimilar] = useState<SimilarityResult[] | null>(null);
   const me = getCurrentUser();
 
   useEffect(() => {
     getArticle(id).then(setArticle);
-    getIssueThread(id).then(setThread);
     getSimilarArticles(id, 5).then((r) => setSimilar(r.filter((s) => s.percent >= 15)));
   }, [id]);
 
@@ -84,11 +81,7 @@ export default function ArticleDetailPage({ params }: PageProps<"/articles/[id]"
           </div>
         </div>
 
-        {article.source && article.source.kind !== "link" && (
-          <div className="mt-6 max-w-sm">
-            <SourceBadge source={article.source} />
-          </div>
-        )}
+        <SourceFile article={article} />
 
         <section className="mt-8">
           <h2 className="mb-3 text-sm font-bold text-ink-soft">3줄 요약</h2>
@@ -133,53 +126,32 @@ export default function ArticleDetailPage({ params }: PageProps<"/articles/[id]"
       </article>
 
       <aside className="glass h-fit p-6 xl:row-span-2">
-        <h2 className="flex items-center gap-2 font-bold">
-          <GitBranch size={16} /> 이슈 타임라인
-        </h2>
-        <p className="mt-1 text-xs text-ink-faint">같은 이슈로 연결된 자료를 날짜순으로 보여줘요.</p>
-        <div className="mt-5">
-          {thread.length > 1 ? (
-            <IssueTimeline articles={thread} currentId={article.id} />
-          ) : (
-            <div className="rounded-xl bg-white/60 p-5 text-center text-xs leading-relaxed text-ink-faint">
-              아직 같은 이슈의 다른 자료가 없어요.
-              <br />
-              관련 자료를 등록하면 자동으로 여기에 이어져요.
-            </div>
-          )}
+        <div className="flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-bold">
+            <ScanSearch size={16} /> 유사한 자료
+          </h2>
+          <Link href={`/similar?article=${article.id}`} className="text-[11px] text-ink-faint hover:text-violet-500">
+            더 보기 →
+          </Link>
         </div>
-
-        <div className="mt-8 border-t border-line pt-6">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-bold">
-              <ScanSearch size={16} /> 유사한 자료
-            </h2>
-            <Link href={`/similar?article=${article.id}`} className="text-[11px] text-ink-faint hover:text-violet-500">
-              더 보기 →
-            </Link>
-          </div>
-          <p className="mt-1 text-xs text-ink-faint">이 자료와 내용이 비슷한 순서예요.</p>
-          <ul className="mt-4 space-y-3">
-            {similar === null && <li className="skeleton h-24" />}
-            {similar?.length === 0 && <li className="text-xs text-ink-faint">비슷한 자료가 아직 없어요.</li>}
-            {similar?.map((s) => (
-              <li key={s.article.id}>
-                <Link href={`/articles/${s.article.id}`} className="block rounded-xl bg-white/60 p-3 transition hover:bg-white">
-                  <span className="flex items-center gap-1.5">
-                    <CategoryBadge category={s.article.category} />
-                    {thread.some((t) => t.id === s.article.id) && (
-                      <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-500">같은 이슈</span>
-                    )}
-                  </span>
-                  <span className="mt-1 line-clamp-1 text-[13px] font-medium">{s.article.title}</span>
-                  <span className="mt-1.5 block">
-                    <SimilarityBar percent={s.percent} />
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <p className="mt-1 text-xs text-ink-faint">이 자료와 내용이 비슷한 순서예요.</p>
+        <ul className="mt-4 space-y-3">
+          {similar === null && <li className="skeleton h-24" />}
+          {similar?.length === 0 && <li className="text-xs text-ink-faint">비슷한 자료가 아직 없어요.</li>}
+          {similar?.map((s) => (
+            <li key={s.article.id}>
+              <Link href={`/articles/${s.article.id}`} className="block rounded-xl bg-white/60 p-3 transition hover:bg-white">
+                <span className="flex items-center gap-1.5">
+                  <CategoryBadge category={s.article.category} />
+                </span>
+                <span className="mt-1 line-clamp-1 text-[13px] font-medium">{s.article.title}</span>
+                <span className="mt-1.5 block">
+                  <SimilarityBar percent={s.percent} />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </aside>
 
       <CommentThread articleId={article.id} />

@@ -275,42 +275,6 @@ export async function checkDuplicate(title: string, url: string): Promise<Duplic
   return hits.slice(0, 10);
 }
 
-/* ───────────── 후속 자료 타임라인 (7장) ───────────── */
-
-/** 해당 자료가 속한 이슈(루트 + 모든 후속 자료)를 날짜순으로 반환 */
-export async function getIssueThread(id: string) {
-  return issueThread(await loadArticles(), id);
-}
-
-function issueThread(articles: Article[], id: string) {
-  const map = new Map(articles.map((a) => [a.id, a]));
-  let root = map.get(id);
-  const seen = new Set<string>();
-  while (root?.parentArticleId && map.has(root.parentArticleId) && !seen.has(root.id)) {
-    seen.add(root.id);
-    root = map.get(root.parentArticleId);
-  }
-  if (!root) return [];
-  const thread: Article[] = [];
-  const queue = [root];
-  while (queue.length) {
-    const cur = queue.shift()!;
-    thread.push(cur);
-    queue.push(...articles.filter((a) => a.parentArticleId === cur.id));
-  }
-  return thread.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-}
-
-/** 후속 자료가 1건 이상 연결된 이슈 목록 */
-export async function listIssues() {
-  const articles = await loadArticles();
-  const roots = articles.filter(
-    (a) => !a.parentArticleId && articles.some((b) => b.parentArticleId === a.id),
-  );
-  const threads = roots.map((r) => issueThread(articles, r.id));
-  return threads.sort((a, b) => b[b.length - 1].createdAt.localeCompare(a[a.length - 1].createdAt));
-}
-
 /* ───────────── 자료 넣기: 링크·파일 → 제목/본문 추출 ───────────── */
 /* 이 두 함수는 mock이 아니라 실제 서버 라우트(/api/extract)를 호출한다 */
 

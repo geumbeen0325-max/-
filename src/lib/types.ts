@@ -16,6 +16,9 @@ export interface ArticleSource {
   fileName?: string;
   fileSize?: number;
   detail?: string; // 예: "PDF · 12쪽"
+  /** Storage에 보관한 원본 파일 경로 (파일 보관 기능 이전에 등록한 자료는 없음) */
+  storagePath?: string;
+  mimeType?: string;
 }
 
 /** 설계서 10.1 articles 테이블과 1:1 대응 (camelCase) + source */

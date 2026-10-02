@@ -55,7 +55,7 @@ create table if not exists public.articles (
   category           text not null check (category in ('경쟁사', '시장', '정책', '기술')),
   keywords           text[] not null default '{}',
   parent_article_id  uuid references public.articles (id),  -- 같은 이슈의 이전 자료 (자동 연결)
-  source             jsonb,                                  -- { kind, fileName, fileSize, detail }
+  source             jsonb,                                  -- { kind, fileName, fileSize, detail, storagePath, mimeType }
   created_by         uuid references public.users (id),
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
@@ -194,3 +194,17 @@ insert into public.users (id, name, role, team) values
   ('00000000-0000-0000-0000-000000000005', '한경제', 'member', '마케팅'),
   ('00000000-0000-0000-0000-000000000006', '박도윤', 'member', '마케팅')
 on conflict (id) do nothing;
+
+-- ============================================================================
+-- 원본 파일 보관 — Storage 'article-files' 버킷 (비공개, 20MB 제한)
+-- 앱은 무작위 경로(uuid.확장자)로 올리고 articles.source.storagePath에 기록한다.
+-- 내려받기·미리보기는 1시간짜리 서명 주소. 표와 같은 규칙: 읽기·추가만, 삭제·덮어쓰기 불가.
+-- ============================================================================
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('article-files', 'article-files', false, 20971520)
+on conflict (id) do nothing;
+
+drop policy if exists "article_files_select" on storage.objects;
+drop policy if exists "article_files_insert" on storage.objects;
+create policy "article_files_select" on storage.objects for select to anon, authenticated using (bucket_id = 'article-files');
+create policy "article_files_insert" on storage.objects for insert to anon, authenticated with check (bucket_id = 'article-files');

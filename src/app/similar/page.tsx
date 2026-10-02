@@ -207,7 +207,7 @@ function SimilarView() {
               <button
                 type="button"
                 onClick={async () => {
-                  // 프로젝트를 저장하고, 관련 깊은 자료를 미리 고른 채로 보고서 작성 화면에서 보고서를 만든다
+                  // 프로젝트를 저장하고, 관련 깊은 자료를 미리 고른 채로 통합 보고서 작성 화면에서 보고서를 만든다
                   const p = await saveProject({ id: projectId ?? undefined, name, description });
                   const top = (results ?? []).filter((r) => r.percent >= 35).slice(0, 5).map((r) => r.article.id);
                   const q = new URLSearchParams({ title: p.name });

@@ -55,7 +55,7 @@ function BriefingView() {
   useEffect(() => {
     listArticles({ limit: 1000 }).then((r) => {
       setArticles(r.items);
-      // 홈의 "보고서 작성하기"로 들어오면 이번 주 자료를 모두 골라 둔다
+      // 홈의 "통합 보고서 작성하기"로 들어오면 이번 주 자료를 모두 골라 둔다
       if (params.get("auto") === "1") {
         const { from = "", to = "" } = periodRange("week");
         setSelected(new Set(r.items.filter((a) => inRange(a, from, to)).map((a) => a.id)));
@@ -146,7 +146,7 @@ function BriefingView() {
 
   return (
     <>
-      <PageHeader title="보고서 작성" description="등록된 자료 중 필요한 것을 골라 하나의 보고서로 만듭니다." />
+      <PageHeader title="통합 보고서 작성" description="등록된 자료 중 필요한 것을 골라 하나의 보고서로 만듭니다." />
 
       {current ? (
         <ReportEditor

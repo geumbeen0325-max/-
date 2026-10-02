@@ -1,6 +1,6 @@
 /**
  * 보고서 — Supabase reports 표에 저장 (삭제는 deleted_at 소프트 삭제).
- * 보고서 작성 화면에서 고른 자료로 만들고, 3D 검증에서 근거 활용도를 점검한다.
+ * 통합 보고서 작성 화면에서 고른 자료로 만들고, 3D 검증에서 근거 활용도를 점검한다.
  */
 import { getUserName, listAllComments } from "./api";
 import { CURRENT_USER_ID } from "./seed";
