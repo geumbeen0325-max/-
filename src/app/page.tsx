@@ -16,6 +16,7 @@ import { getCommentSummaries, getUserName, listArticles, listRecentComments } fr
 import { CATEGORIES, type Article } from "@/lib/types";
 import { CATEGORY_STYLE, cn, timeAgo, weekRange } from "@/lib/utils";
 import Avatar from "@/components/Avatar";
+import ArticleCalendar from "@/components/ArticleCalendar";
 import {
   ArticleCard,
   type Discussion,
@@ -81,6 +82,7 @@ export default function HomePage() {
         <ReportCta />
         <RecentComments />
         <QuickFilter />
+        <ArticleCalendar />
       </aside>
     </div>
   );
