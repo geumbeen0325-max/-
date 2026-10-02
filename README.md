@@ -80,20 +80,30 @@ npm run dev   # http://localhost:3000
 Supabase 대시보드 → SQL Editor에 붙여넣고 실행. 표: `users`, `articles`, `comments`, `briefings`, `projects`, `reports`.
 
 - 캠프용 권한: 로그인 없이(anon) **읽기·추가·수정 가능, 삭제 불가**. DELETE 정책을 만들지 않았고 DELETE·TRUNCATE 권한도 회수했다.
-- 앱의 삭제 기능은 `deleted_at`에 시각을 넣는 **소프트 삭제**로 바꿔야 한다(조회 시 `deleted_at is null` 조건). 공감 취소도 `likes` 배열 UPDATE로 처리.
+- 앱의 삭제 기능은 `deleted_at`에 시각을 넣는 **소프트 삭제**다(조회 시 `deleted_at is null` 조건). 공감 취소도 `likes` 배열 UPDATE로 처리.
 - 여러 번 실행해도 안전(`if not exists`, 정책 재생성). 기본 팀원 6명을 고정 id로 넣는다.
 
-## 백엔드 연동
+## 백엔드 연동 (Supabase)
 
-현재 데이터는 **브라우저 localStorage mock**(`src/lib/api.ts`)에 저장됩니다.
-함수는 설계서 11~13장의 REST API와 1:1로 대응하므로, 백엔드 구현 후 함수 본문만 `fetch` 호출로 바꾸면 됩니다.
+데이터는 **Supabase**에 저장되어 같은 주소로 접속한 팀원 모두가 같은 자료를 봅니다.
+브라우저에서 `@supabase/supabase-js`로 직접 읽고 쓰며(`src/lib/supabase.ts`), 권한은 위 RLS 정책이 지킵니다.
 
-| 함수 | API |
-| --- | --- |
-| `listArticles` | `GET /api/articles?q=&category=&from=&to=` |
-| `getArticle` / `createArticle` / `updateArticle` / `deleteArticle` | `GET·POST·PATCH·DELETE /api/articles` |
-| `checkDuplicate` | 중복 검사 (16장) |
-| `analyzeArticle` | `POST /api/ai/analyze` — 지금은 본문 기반 규칙 mock, 본문 40자 미만이면 실패를 흉내냄 |
-| `generateWeeklyBriefing` | `POST /api/briefings/weekly` |
+`.env.local` (git에 올리지 않음, 배포 시 Vercel 환경변수에도 같은 값 등록):
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<프로젝트>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+```
+
+| 함수 (`src/lib/api.ts`, `reports.ts`) | 설계서 API | 표 |
+| --- | --- | --- |
+| `listArticles` | `GET /api/articles?q=&category=&from=&to=` | articles (+ 검색 시 comments) |
+| `getArticle` / `createArticle` / `updateArticle` / `deleteArticle` | `GET·POST·PATCH·DELETE /api/articles` | articles |
+| `checkDuplicate` | 중복 검사 (16장) | articles |
+| `analyzeArticle` | `POST /api/ai/analyze` — 아직 본문 기반 규칙 mock, 본문 40자 미만이면 실패를 흉내냄 | — |
+| `generateWeeklyBriefing` | `POST /api/briefings/weekly` — 같은 주는 덮어씀 | briefings |
+| 댓글·프로젝트·보고서 함수 | — | comments, projects, reports |
+
+검색·중복 검사·유사도는 삭제되지 않은 자료를 모두 불러와 브라우저에서 계산합니다(팀 규모 자료 수 기준). 자료가 수천 건을 넘으면 DB 검색으로 옮길 것.
 
 로그인 사용자는 `src/lib/seed.ts`의 `CURRENT_USER_ID`(권지오, 관리자)로 고정되어 있습니다.

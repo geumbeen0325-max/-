@@ -1,11 +1,12 @@
 /**
  * 프론트엔드용 API 클라이언트.
  *
- * 현재는 백엔드가 없으므로 localStorage 기반 mock으로 동작한다.
- * 함수 시그니처는 설계서 11~13장의 REST API와 1:1로 맞춰 두었으므로,
- * 백엔드 구현 후에는 각 함수 본문만 fetch("/api/...") 호출로 바꾸면 된다.
+ * 데이터는 Supabase(supabase/schema.sql)에 저장되어 같은 주소로 접속한 팀원 모두가 같은 자료를 본다.
+ * 함수 시그니처는 설계서 11~13장의 REST API와 1:1로 맞춰 두었다.
+ * 삭제는 deleted_at에 시각을 넣는 소프트 삭제 (DB에서 실제 삭제는 막혀 있음).
  */
-import { CURRENT_USER_ID, SEED_ARTICLES, SEED_COMMENTS, USERS } from "./seed";
+import { CURRENT_USER_ID, USERS } from "./seed";
+import { fromArticle, must, supabase, toArticle, toBriefing, toComment, toProject } from "./supabase";
 import {
   CATEGORIES,
   type AnalyzeResult,
@@ -24,71 +25,21 @@ import {
 import { normalizeTitle, normalizeUrl, toDateInput, weekLabel } from "./utils";
 import { buildIndex, rankBySimilarity, type DocInput } from "./similarity";
 
-const ARTICLES_KEY = "trend-drawer:articles";
-const BRIEFINGS_KEY = "trend-drawer:briefings";
-const COMMENTS_KEY = "trend-drawer:comments";
-const PROJECTS_KEY = "trend-drawer:projects";
-
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw) as T;
-  } catch {}
-  return fallback;
-}
-
-function write<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
-}
-
-function loadArticles(): Article[] {
-  const stored = read<Article[] | null>(ARTICLES_KEY, null);
-  if (stored) return stored;
-  write(ARTICLES_KEY, SEED_ARTICLES);
-  return SEED_ARTICLES;
-}
-
-/**
- * 댓글 저장소. 처음 읽을 때 이전 버전의 '시사점'(article.insight)을
- * 등록자의 첫 댓글로 옮긴다.
- */
-function loadComments(): Comment[] {
-  const stored = read<Comment[] | null>(COMMENTS_KEY, null);
-  if (stored) return stored;
-
-  const seedIds = new Set(SEED_ARTICLES.map((a) => a.id));
-  const legacy = loadArticles() as (Article & { insight?: string })[];
-  const migrated: Comment[] = legacy
-    .filter((a) => !seedIds.has(a.id) && a.insight?.trim())
-    .map((a) => ({
-      id: crypto.randomUUID(),
-      articleId: a.id,
-      parentId: null,
-      authorId: a.createdBy,
-      text: a.insight!.trim(),
-      likes: [],
-      createdAt: a.createdAt,
-    }));
-  const ids = new Set(legacy.map((a) => a.id));
-  const comments = [...SEED_COMMENTS.filter((c) => ids.has(c.articleId)), ...migrated];
-  write(COMMENTS_KEY, comments);
-  write(
-    ARTICLES_KEY,
-    legacy.map((a) => {
-      const copy = { ...a };
-      delete copy.insight;
-      return copy;
-    }),
-  );
-  return comments;
-}
-
 const byNewest = (a: Article, b: Article) => b.createdAt.localeCompare(a.createdAt);
+const now = () => new Date().toISOString();
+
+/** 삭제되지 않은 모든 자료 (최신순). 팀 규모의 자료 수에서는 검색·유사도 계산을 브라우저에서 해도 충분하다 */
+async function loadArticles(): Promise<Article[]> {
+  const rows = must(await supabase.from("articles").select("*").is("deleted_at", null).order("created_at", { ascending: false }));
+  return rows.map(toArticle);
+}
+
+/** 삭제되지 않은 모든 댓글 (작성순) */
+async function loadComments(): Promise<Comment[]> {
+  const rows = must(await supabase.from("comments").select("*").is("deleted_at", null).order("created_at"));
+  return rows.map(toComment);
+}
 
 /* ───────────── 사용자 ───────────── */
 
@@ -118,13 +69,11 @@ function matches(a: Article, q: string, commentText: string) {
 
 /** GET /api/articles?q=&category=&from=&to=&page=&limit= — 검색 대상에 팀 의견(댓글) 포함 */
 export async function listArticles(query: ArticleQuery = {}) {
-  await delay(120);
   const { q = "", category = "전체", from, to, page = 1, limit = 100 } = query;
+  const [articles, comments] = await Promise.all([loadArticles(), q.trim() ? loadComments() : Promise.resolve([])]);
   const commentText = new Map<string, string>();
-  if (q.trim()) {
-    for (const c of loadComments()) commentText.set(c.articleId, `${commentText.get(c.articleId) ?? ""} ${c.text}`);
-  }
-  const filtered = loadArticles()
+  for (const c of comments) commentText.set(c.articleId, `${commentText.get(c.articleId) ?? ""} ${c.text}`);
+  const filtered = articles
     .filter((a) => matches(a, q, commentText.get(a.id) ?? ""))
     .filter((a) => category === "전체" || a.category === category)
     .filter((a) => !from || toDateInput(new Date(a.createdAt)) >= from)
@@ -138,100 +87,79 @@ export async function listArticles(query: ArticleQuery = {}) {
 
 /** GET /api/articles/:id */
 export async function getArticle(id: string) {
-  await delay(80);
-  return loadArticles().find((a) => a.id === id) ?? null;
+  const row = must(await supabase.from("articles").select("*").eq("id", id).is("deleted_at", null).maybeSingle());
+  return row ? toArticle(row) : null;
 }
 
 /** POST /api/articles — firstComment가 있으면 등록자의 첫 의견으로 함께 남긴다 */
 export async function createArticle(input: ArticleInput, firstComment?: string) {
-  await delay(200);
-  const now = new Date().toISOString();
-  const article: Article = {
-    ...input,
-    title: input.title.trim(),
-    url: input.url.trim(),
-    id: crypto.randomUUID(),
-    createdBy: CURRENT_USER_ID,
-    createdAt: now,
-    updatedAt: now,
-  };
-  write(ARTICLES_KEY, [article, ...loadArticles()]);
+  const row = must(
+    await supabase
+      .from("articles")
+      .insert(fromArticle({ ...input, title: input.title.trim(), url: input.url.trim(), createdBy: CURRENT_USER_ID }))
+      .select()
+      .single(),
+  );
+  const article = toArticle(row);
   if (firstComment?.trim()) await addComment(article.id, firstComment);
   return article;
 }
 
 /** PATCH /api/articles/:id */
 export async function updateArticle(id: string, patch: Partial<ArticleInput>) {
-  await delay(150);
-  const articles = loadArticles();
-  const idx = articles.findIndex((a) => a.id === id);
-  if (idx < 0) throw new Error("자료를 찾을 수 없습니다.");
-  articles[idx] = { ...articles[idx], ...patch, updatedAt: new Date().toISOString() };
-  write(ARTICLES_KEY, articles);
-  return articles[idx];
+  const row = must(await supabase.from("articles").update(fromArticle(patch)).eq("id", id).is("deleted_at", null).select().maybeSingle());
+  if (!row) throw new Error("자료를 찾을 수 없습니다.");
+  return toArticle(row);
 }
 
-/** DELETE /api/articles/:id — 후속 자료의 연결은 끊고 남겨둔다 */
+/** DELETE /api/articles/:id — 후속 자료의 연결은 끊고 남겨둔다 (소프트 삭제) */
 export async function deleteArticle(id: string) {
-  await delay(150);
-  const articles = loadArticles()
-    .filter((a) => a.id !== id)
-    .map((a) => (a.parentArticleId === id ? { ...a, parentArticleId: null } : a));
-  write(ARTICLES_KEY, articles);
-  write(COMMENTS_KEY, loadComments().filter((c) => c.articleId !== id));
+  must(await supabase.from("articles").update({ parent_article_id: null }).eq("parent_article_id", id));
+  must(await supabase.from("articles").update({ deleted_at: now() }).eq("id", id));
+  must(await supabase.from("comments").update({ deleted_at: now() }).eq("article_id", id).is("deleted_at", null));
 }
 
 /* ───────────── 팀 의견(댓글) ───────────── */
 
 /** GET /api/articles/:id/comments — 작성순 */
 export async function listComments(articleId: string) {
-  await delay(60);
-  return loadComments()
-    .filter((c) => c.articleId === articleId)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const rows = must(await supabase.from("comments").select("*").eq("article_id", articleId).is("deleted_at", null).order("created_at"));
+  return rows.map(toComment);
 }
 
 /** POST /api/articles/:id/comments */
 export async function addComment(articleId: string, text: string, parentId: string | null = null) {
-  const comment: Comment = {
-    id: crypto.randomUUID(),
-    articleId,
-    parentId,
-    authorId: CURRENT_USER_ID,
-    text: text.trim(),
-    likes: [],
-    createdAt: new Date().toISOString(),
-  };
-  write(COMMENTS_KEY, [...loadComments(), comment]);
-  return comment;
+  const row = must(
+    await supabase
+      .from("comments")
+      .insert({ article_id: articleId, parent_id: parentId, author_id: CURRENT_USER_ID, text: text.trim() })
+      .select()
+      .single(),
+  );
+  return toComment(row);
 }
 
 /** PATCH /api/comments/:id */
 export async function editComment(id: string, text: string) {
-  write(COMMENTS_KEY, loadComments().map((c) => (c.id === id ? { ...c, text: text.trim() } : c)));
+  must(await supabase.from("comments").update({ text: text.trim() }).eq("id", id));
 }
 
-/** DELETE /api/comments/:id — 답글도 함께 삭제 */
+/** DELETE /api/comments/:id — 답글도 함께 삭제 (소프트 삭제) */
 export async function deleteComment(id: string) {
-  write(COMMENTS_KEY, loadComments().filter((c) => c.id !== id && c.parentId !== id));
+  must(await supabase.from("comments").update({ deleted_at: now() }).or(`id.eq.${id},parent_id.eq.${id}`).is("deleted_at", null));
 }
 
 /** POST /api/comments/:id/like — 공감 토글 */
 export async function toggleLike(id: string) {
-  write(
-    COMMENTS_KEY,
-    loadComments().map((c) =>
-      c.id === id
-        ? { ...c, likes: c.likes.includes(CURRENT_USER_ID) ? c.likes.filter((u) => u !== CURRENT_USER_ID) : [...c.likes, CURRENT_USER_ID] }
-        : c,
-    ),
-  );
+  const { likes } = toComment(must(await supabase.from("comments").select("*").eq("id", id).single()));
+  const next = likes.includes(CURRENT_USER_ID) ? likes.filter((u) => u !== CURRENT_USER_ID) : [...likes, CURRENT_USER_ID];
+  must(await supabase.from("comments").update({ likes: next }).eq("id", id));
 }
 
 /** 카드·목록용: 자료별 댓글 수와 대표 의견(공감 많은 → 최신) */
 export async function getCommentSummaries() {
   const map = new Map<string, { count: number; top: Comment | null }>();
-  for (const c of loadComments()) {
+  for (const c of await loadComments()) {
     const s = map.get(c.articleId) ?? { count: 0, top: null };
     s.count++;
     if (!c.parentId && (!s.top || c.likes.length > s.top.likes.length || (c.likes.length === s.top.likes.length && c.createdAt > s.top.createdAt)))
@@ -243,8 +171,9 @@ export async function getCommentSummaries() {
 
 /** 최근 팀 의견 (홈 화면) */
 export async function listRecentComments(limit = 5) {
-  const articles = new Map(loadArticles().map((a) => [a.id, a]));
-  return loadComments()
+  const [list, comments] = await Promise.all([loadArticles(), loadComments()]);
+  const articles = new Map(list.map((a) => [a.id, a]));
+  return comments
     .filter((c) => articles.has(c.articleId))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit)
@@ -255,14 +184,12 @@ export async function listRecentComments(limit = 5) {
 
 /** POST /api/similar — 프로젝트 설명(또는 임의의 글)과 비슷한 자료를 유사도 순으로 */
 export async function searchSimilar(query: DocInput, opts: { excludeId?: string; limit?: number } = {}) {
-  await delay(250);
-  return rankBySimilarity(buildIndex(loadArticles()), query, opts);
+  return rankBySimilarity(buildIndex(await loadArticles()), query, opts);
 }
 
 /** GET /api/articles/:id/similar — 자료 ↔ 자료 유사도 */
 export async function getSimilarArticles(id: string, limit = 5) {
-  await delay(80);
-  const articles = loadArticles();
+  const articles = await loadArticles();
   const me = articles.find((a) => a.id === id);
   if (!me) return [];
   return rankBySimilarity(buildIndex(articles), me, { excludeId: id, limit });
@@ -270,22 +197,20 @@ export async function getSimilarArticles(id: string, limit = 5) {
 
 /** 저장해 둔 프로젝트 (유사 자료 찾기의 질의) */
 export async function listProjects(): Promise<Project[]> {
-  return read<Project[]>(PROJECTS_KEY, []).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const rows = must(await supabase.from("projects").select("*").is("deleted_at", null).order("updated_at", { ascending: false }));
+  return rows.map(toProject);
 }
 
 export async function saveProject(p: Pick<Project, "name" | "description"> & { id?: string }) {
-  const all = read<Project[]>(PROJECTS_KEY, []);
-  const now = new Date().toISOString();
-  const existing = p.id ? all.find((x) => x.id === p.id) : undefined;
-  const project: Project = existing
-    ? { ...existing, name: p.name.trim(), description: p.description, updatedAt: now }
-    : { id: crypto.randomUUID(), name: p.name.trim(), description: p.description, createdBy: CURRENT_USER_ID, createdAt: now, updatedAt: now };
-  write(PROJECTS_KEY, [project, ...all.filter((x) => x.id !== project.id)]);
-  return project;
+  const fields = { name: p.name.trim(), description: p.description };
+  const row = p.id
+    ? must(await supabase.from("projects").update(fields).eq("id", p.id).select().single())
+    : must(await supabase.from("projects").insert({ ...fields, created_by: CURRENT_USER_ID }).select().single());
+  return toProject(row);
 }
 
 export async function deleteProject(id: string) {
-  write(PROJECTS_KEY, read<Project[]>(PROJECTS_KEY, []).filter((p) => p.id !== id));
+  must(await supabase.from("projects").update({ deleted_at: now() }).eq("id", id));
 }
 
 /* ───────────── 같은 이슈 자동 연결 ───────────── */
@@ -315,7 +240,7 @@ function termsOf(title: string, keywords: string[]) {
  * 실제 AI 연동 후에는 임베딩 유사도로 교체할 자리.
  */
 export async function findRelatedArticles(title: string, keywords: string[], excludeId?: string): Promise<RelatedMatch[]> {
-  const articles = loadArticles().filter((a) => a.id !== excludeId);
+  const articles = (await loadArticles()).filter((a) => a.id !== excludeId);
   if (!articles.length) return [];
   const docs = articles.map((a) => ({ a, terms: termsOf(a.title, a.keywords) }));
   const df = new Map<string, number>();
@@ -342,11 +267,10 @@ export interface DuplicateHit {
 
 /** URL 동일 OR 제목 동일. URL이 비어 있으면 URL 조건은 제외 */
 export async function checkDuplicate(title: string, url: string): Promise<DuplicateHit[]> {
-  await delay(150);
   const t = normalizeTitle(title);
   const u = url.trim() ? normalizeUrl(url) : "";
   const hits: DuplicateHit[] = [];
-  for (const a of loadArticles()) {
+  for (const a of await loadArticles()) {
     if (u && normalizeUrl(a.url) === u) hits.push({ article: a, reason: "url" });
     else if (t && normalizeTitle(a.title) === t) hits.push({ article: a, reason: "title" });
   }
@@ -357,8 +281,10 @@ export async function checkDuplicate(title: string, url: string): Promise<Duplic
 
 /** 해당 자료가 속한 이슈(루트 + 모든 후속 자료)를 날짜순으로 반환 */
 export async function getIssueThread(id: string) {
-  await delay(80);
-  const articles = loadArticles();
+  return issueThread(await loadArticles(), id);
+}
+
+function issueThread(articles: Article[], id: string) {
   const map = new Map(articles.map((a) => [a.id, a]));
   let root = map.get(id);
   const seen = new Set<string>();
@@ -379,11 +305,11 @@ export async function getIssueThread(id: string) {
 
 /** 후속 자료가 1건 이상 연결된 이슈 목록 */
 export async function listIssues() {
-  const articles = loadArticles();
+  const articles = await loadArticles();
   const roots = articles.filter(
     (a) => !a.parentArticleId && articles.some((b) => b.parentArticleId === a.id),
   );
-  const threads = await Promise.all(roots.map((r) => getIssueThread(r.id)));
+  const threads = roots.map((r) => issueThread(articles, r.id));
   return threads.sort((a, b) => b[b.length - 1].createdAt.localeCompare(a[a.length - 1].createdAt));
 }
 
@@ -469,14 +395,13 @@ export async function analyzeArticle(title: string, body: string): Promise<Analy
 /* ───────────── 주간 브리핑 (8장, 13장) ───────────── */
 
 export async function listBriefings(): Promise<Briefing[]> {
-  return read<Briefing[]>(BRIEFINGS_KEY, []);
+  const rows = must(await supabase.from("briefings").select("*").order("week_start", { ascending: false }).limit(20));
+  return rows.map(toBriefing);
 }
 
 /** POST /api/briefings/weekly */
 export async function generateWeeklyBriefing(start: Date, end: Date): Promise<Briefing> {
-  await delay(1500);
-  const { items } = await listArticles({ from: toDateInput(start), to: toDateInput(end) });
-  const comments = loadComments();
+  const [{ items }, comments] = await Promise.all([listArticles({ from: toDateInput(start), to: toDateInput(end) }), loadComments()]);
 
   const sections: BriefingSection[] = CATEGORIES.map((category) => {
     const list = items.filter((a) => a.category === category);
@@ -532,18 +457,24 @@ export async function generateWeeklyBriefing(start: Date, end: Date): Promise<Br
     ...overall.map((o) => `- ${o}`),
   ].join("\n");
 
-  const briefing: Briefing = {
-    id: crypto.randomUUID(),
-    weekStart: toDateInput(start),
-    weekEnd: toDateInput(end),
-    sections,
-    overall,
-    content,
-    articleCount: items.length,
-    createdBy: CURRENT_USER_ID,
-    createdAt: new Date().toISOString(),
-  };
-  const others = (await listBriefings()).filter((b) => b.weekStart !== briefing.weekStart);
-  write(BRIEFINGS_KEY, [briefing, ...others].slice(0, 20));
-  return briefing;
+  // 같은 주를 다시 생성하면 덮어쓴다 (week_start unique)
+  const row = must(
+    await supabase
+      .from("briefings")
+      .upsert(
+        {
+          week_start: toDateInput(start),
+          week_end: toDateInput(end),
+          sections,
+          overall,
+          content,
+          article_count: items.length,
+          created_by: CURRENT_USER_ID,
+        },
+        { onConflict: "week_start" },
+      )
+      .select()
+      .single(),
+  );
+  return toBriefing(row);
 }

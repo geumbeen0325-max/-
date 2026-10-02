@@ -1,28 +1,13 @@
 /**
- * 보고서 (localStorage mock) — 백엔드 연동 시 /api/reports CRUD로 교체.
+ * 보고서 — Supabase reports 표에 저장 (삭제는 deleted_at 소프트 삭제).
  */
 import { getUserName, listArticles, listComments, searchSimilar } from "./api";
 import { CURRENT_USER_ID } from "./seed";
+import { fromReport, must, supabase, toReport } from "./supabase";
 import type { Article, Report, ReportSection, ReportTemplate, VerifyScores } from "./types";
 import { formatDate } from "./utils";
 
-const REPORTS_KEY = "trend-drawer:reports";
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function read(): Report[] | null {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(REPORTS_KEY);
-    return raw ? (JSON.parse(raw) as Report[]) : null;
-  } catch {
-    return [];
-  }
-}
-function write(reports: Report[]) {
-  try {
-    localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
-  } catch {}
-}
 
 export const TEMPLATES: Record<ReportTemplate, { label: string; desc: string; headings: string[] }> = {
   trend: {
@@ -40,48 +25,14 @@ export const TEMPLATES: Record<ReportTemplate, { label: string; desc: string; he
 
 const section = (heading: string, content = ""): ReportSection => ({ id: crypto.randomUUID(), heading, content });
 
-/** 처음 열 때 보여줄 예시 보고서 (3D 검증 체험용: 관련 자료 일부만 인용) */
-function seedReports(): Report[] {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: "r-sample",
-      title: "AI 반도체 경쟁 동향 및 대응 방안",
-      template: "trend",
-      projectId: null,
-      sections: [
-        section("개요", "본 보고서는 경쟁사의 AI 반도체 전략 변화를 정리하고 우리 회사의 대응 방향을 검토한다."),
-        section("주요 동향", "삼성전자가 차세대 AI 반도체 로드맵을 공개했다 [1].\n이후 AI 반도체 신제품을 공식 공개하고 클라우드 기업과 공급 협의를 진행 중이다 [2]."),
-        section("분야별 분석", ""),
-        section("시사점", "클라우드 공급 계약 여부가 시장 판도의 분기점이 될 것으로 보인다 [2]."),
-        section("대응 방안", ""),
-      ],
-      citations: ["a1", "a3"],
-      status: "작성 중",
-      verifyHistory: [],
-      createdBy: CURRENT_USER_ID,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ];
-}
-
-function load(): Report[] {
-  const stored = read();
-  if (stored) return stored;
-  const seeded = seedReports();
-  write(seeded);
-  return seeded;
-}
-
 export async function listReports() {
-  await delay(60);
-  return load().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const rows = must(await supabase.from("reports").select("*").is("deleted_at", null).order("updated_at", { ascending: false }));
+  return rows.map(toReport);
 }
 
 export async function getReport(id: string) {
-  await delay(40);
-  return load().find((r) => r.id === id) ?? null;
+  const row = must(await supabase.from("reports").select("*").eq("id", id).is("deleted_at", null).maybeSingle());
+  return row ? toReport(row) : null;
 }
 
 export async function createReport(opts: {
@@ -91,43 +42,52 @@ export async function createReport(opts: {
   sections?: ReportSection[];
   citations?: string[];
 }) {
-  const now = new Date().toISOString();
-  const report: Report = {
-    id: crypto.randomUUID(),
-    title: opts.title.trim() || "제목 없는 보고서",
-    template: opts.template,
-    projectId: opts.projectId ?? null,
-    sections: opts.sections ?? TEMPLATES[opts.template].headings.map((h) => section(h)),
-    citations: opts.citations ?? [],
-    status: "작성 중",
-    verifyHistory: [],
-    createdBy: CURRENT_USER_ID,
-    createdAt: now,
-    updatedAt: now,
-  };
-  write([report, ...load()]);
-  return report;
+  const row = must(
+    await supabase
+      .from("reports")
+      .insert(
+        fromReport({
+          title: opts.title.trim() || "제목 없는 보고서",
+          template: opts.template,
+          projectId: opts.projectId ?? null,
+          sections: opts.sections ?? TEMPLATES[opts.template].headings.map((h) => section(h)),
+          citations: opts.citations ?? [],
+          createdBy: CURRENT_USER_ID,
+        }),
+      )
+      .select()
+      .single(),
+  );
+  return toReport(row);
 }
 
+/** 제목·항목·인용·상태 저장 (검증 기록은 recordVerification이 따로 관리) */
 export async function saveReport(report: Report) {
-  const saved = { ...report, updatedAt: new Date().toISOString() };
-  write([saved, ...load().filter((r) => r.id !== report.id)]);
-  return saved;
+  const { title, template, projectId, sections, citations, status } = report;
+  const row = must(
+    await supabase
+      .from("reports")
+      .update(fromReport({ title, template, projectId, sections, citations, status }))
+      .eq("id", report.id)
+      .select()
+      .single(),
+  );
+  return toReport(row);
 }
 
 export async function deleteReport(id: string) {
-  write(load().filter((r) => r.id !== id));
+  must(await supabase.from("reports").update({ deleted_at: new Date().toISOString() }).eq("id", id));
 }
 
 export async function recordVerification(id: string, scores: VerifyScores) {
-  const r = load().find((x) => x.id === id);
+  const r = await getReport(id);
   if (!r) return null;
   const last = r.verifyHistory.at(-1)?.scores;
   // 점수가 바뀌었을 때만 기록 (같은 상태로 여러 번 열어도 궤적이 늘지 않게)
   if (last && last.evidence === scores.evidence && last.balance === scores.balance && last.recency === scores.recency) return r;
-  const updated = { ...r, verifyHistory: [...r.verifyHistory, { at: new Date().toISOString(), scores }].slice(-12) };
-  write(load().map((x) => (x.id === id ? updated : x)));
-  return updated;
+  const verifyHistory = [...r.verifyHistory, { at: new Date().toISOString(), scores }].slice(-12);
+  const row = must(await supabase.from("reports").update({ verify_history: verifyHistory }).eq("id", id).select().single());
+  return toReport(row);
 }
 
 export function newSection(heading = "새 항목", content = "") {
