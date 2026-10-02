@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f5fc;
+  --ink: #1f1d3a;
+  --ink-soft: #6b6890;
+  --ink-faint: #a3a1bf;
+  --line: rgba(124, 116, 196, 0.14);
+  --brand-from: #8fb4ff;
+  --brand-to: #ff9ec7;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", sans-serif;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  color: var(--ink);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  background:
+    radial-gradient(900px 600px at 85% -10%, rgba(255, 192, 220, 0.45), transparent 60%),
+    radial-gradient(800px 600px at 45% 0%, rgba(196, 210, 255, 0.5), transparent 60%),
+    radial-gradient(700px 700px at 0% 100%, rgba(214, 200, 255, 0.45), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+@layer components {
+  .glass {
+    @apply rounded-2xl border border-white/80 bg-white/65 shadow-[0_8px_30px_-12px_rgba(99,88,180,0.18)] backdrop-blur-xl;
+  }
+  .btn-brand {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[var(--brand-from)] to-[var(--brand-to)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(255,120,180,0.6)] transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-white/70 px-4 py-2.5 text-sm font-medium text-ink-soft transition hover:bg-white hover:text-ink disabled:opacity-50;
+  }
+  .field {
+    @apply w-full rounded-xl border border-line bg-white/80 px-4 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-faint focus:border-violet-300 focus:ring-4 focus:ring-violet-100;
+  }
+  .label {
+    @apply mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-ink;
+  }
+  .chip {
+    @apply rounded-md bg-violet-50/80 px-2 py-0.5 text-xs text-violet-500;
+  }
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, #eeecf8 25%, #f8f7fd 50%, #eeecf8 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+}
