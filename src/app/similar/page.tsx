@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BookmarkPlus, FileUp, Info, Link2, LoaderCircle, NotebookPen, X } from "lucide-react";
-import { createReport } from "@/lib/reports";
 import {
   deleteProject,
   extractFromFile,
@@ -208,15 +207,16 @@ function SimilarView() {
               <button
                 type="button"
                 onClick={async () => {
-                  // 프로젝트를 저장하고, 그 프로젝트에 연결된 기획서를 만들면서 관련 깊은 자료를 미리 인용
+                  // 프로젝트를 저장하고, 관련 깊은 자료를 미리 고른 채로 주간 브리핑에서 보고서를 만든다
                   const p = await saveProject({ id: projectId ?? undefined, name, description });
                   const top = (results ?? []).filter((r) => r.percent >= 35).slice(0, 5).map((r) => r.article.id);
-                  const rep = await createReport({ title: p.name, template: "proposal", projectId: p.id, citations: top });
-                  router.push(`/reports/${rep.id}`);
+                  const q = new URLSearchParams({ title: p.name });
+                  if (top.length) q.set("ids", top.join(","));
+                  router.push(`/briefing?${q}`);
                 }}
                 className="btn-ghost w-full border-violet-200 bg-violet-50 text-violet-700"
               >
-                <NotebookPen size={15} /> 이 프로젝트로 보고서 쓰기
+                <NotebookPen size={15} /> 비슷한 자료로 보고서 만들기
               </button>
             )}
 

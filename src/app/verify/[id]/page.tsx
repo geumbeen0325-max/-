@@ -19,7 +19,7 @@ import { CategoryBadge, EmptyState } from "@/components/ui";
 const AXES: [string, string, string] = ["근거 충실도", "관점 균형", "최신성"];
 const TARGET = 70;
 
-export default function VerifyPage({ params }: PageProps<"/reports/[id]/verify">) {
+export default function VerifyPage({ params }: PageProps<"/verify/[id]">) {
   const { id } = use(params);
   const router = useRouter();
   const [report, setReport] = useState<Report | null | undefined>(undefined);
@@ -119,8 +119,8 @@ export default function VerifyPage({ params }: PageProps<"/reports/[id]/verify">
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <Link href={`/reports/${report.id}`} className="mb-2 flex items-center gap-1 text-sm text-ink-faint hover:text-ink">
-            <ArrowLeft size={15} /> 보고서로 돌아가기
+          <Link href="/verify" className="mb-2 flex items-center gap-1 text-sm text-ink-faint hover:text-ink">
+            <ArrowLeft size={15} /> 보고서 목록
           </Link>
           <h1 className="text-2xl font-bold">3D 검증</h1>
           <p className="mt-1 text-sm text-ink-soft">
@@ -261,7 +261,7 @@ export default function VerifyPage({ params }: PageProps<"/reports/[id]/verify">
                 ))}
               </ul>
             )}
-            <Link href={`/reports/${report.id}`} className="btn-ghost mt-4 w-full">
+            <Link href={`/briefing?report=${report.id}`} className="btn-ghost mt-4 w-full">
               보고서 고치러 가기
             </Link>
           </section>

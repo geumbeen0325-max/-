@@ -1,27 +1,12 @@
 /**
  * 보고서 — Supabase reports 표에 저장 (삭제는 deleted_at 소프트 삭제).
+ * 주간 브리핑에서 고른 자료로 만들고, 3D 검증에서 근거 활용도를 점검한다.
  */
-import { getUserName, listArticles, listComments, searchSimilar } from "./api";
+import { getUserName, listAllComments } from "./api";
 import { CURRENT_USER_ID } from "./seed";
 import { fromReport, must, supabase, toReport } from "./supabase";
-import type { Article, Report, ReportSection, ReportTemplate, VerifyScores } from "./types";
+import { CATEGORIES, type Article, type Report, type ReportSection, type VerifyScores } from "./types";
 import { formatDate } from "./utils";
-
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export const TEMPLATES: Record<ReportTemplate, { label: string; desc: string; headings: string[] }> = {
-  trend: {
-    label: "동향 보고서",
-    desc: "경쟁사·시장·정책·기술 동향을 정리해 공유할 때",
-    headings: ["개요", "주요 동향", "분야별 분석", "시사점", "대응 방안"],
-  },
-  proposal: {
-    label: "프로젝트 기획서",
-    desc: "새 프로젝트의 배경과 추진 계획을 제안할 때",
-    headings: ["배경 및 목적", "현황 분석", "추진 방안", "기대 효과", "일정 및 과제"],
-  },
-  free: { label: "자유 양식", desc: "목차를 직접 구성할 때", headings: ["본문"] },
-};
 
 const section = (heading: string, content = ""): ReportSection => ({ id: crypto.randomUUID(), heading, content });
 
@@ -35,23 +20,17 @@ export async function getReport(id: string) {
   return row ? toReport(row) : null;
 }
 
-export async function createReport(opts: {
-  title: string;
-  template: ReportTemplate;
-  projectId?: string | null;
-  sections?: ReportSection[];
-  citations?: string[];
-}) {
+async function createReport(opts: { title: string; sections: ReportSection[]; citations: string[] }) {
   const row = must(
     await supabase
       .from("reports")
       .insert(
         fromReport({
           title: opts.title.trim() || "제목 없는 보고서",
-          template: opts.template,
-          projectId: opts.projectId ?? null,
-          sections: opts.sections ?? TEMPLATES[opts.template].headings.map((h) => section(h)),
-          citations: opts.citations ?? [],
+          template: "trend",
+          projectId: null,
+          sections: opts.sections,
+          citations: opts.citations,
           createdBy: CURRENT_USER_ID,
         }),
       )
@@ -90,8 +69,65 @@ export async function recordVerification(id: string, scores: VerifyScores) {
   return toReport(row);
 }
 
-export function newSection(heading = "새 항목", content = "") {
-  return section(heading, content);
+/* ───────────── 브리핑 → 보고서 ───────────── */
+
+/**
+ * 고른 자료로 보고서 한 건을 만든다. 자료는 등록일 순으로 [번호]를 매겨 인용하고,
+ * 문장은 자료의 요약·팀 의견으로만 구성한다 (자료에 없는 사실은 만들지 않음).
+ * 시사점은 팀이 직접 쓰도록 비워 둔다. 실제 AI 연동 시 /api/briefings로 교체.
+ */
+export async function createBriefingReport(title: string, picked: Article[]) {
+  const articles = [...picked].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const citations = articles.map((a) => a.id);
+  const num = new Map(citations.map((id, i) => [id, i + 1]));
+  const ids = new Set(citations);
+  const comments = (await listAllComments()).filter((c) => ids.has(c.articleId) && !c.parentId);
+
+  const groups = CATEGORIES.map((category) => ({ category, list: articles.filter((a) => a.category === category) })).filter(
+    (g) => g.list.length,
+  );
+  const first = articles[0].createdAt;
+  const last = articles.at(-1)!.createdAt;
+
+  const keywordCount = new Map<string, number>();
+  articles.forEach((a) => a.keywords.forEach((k) => keywordCount.set(k, (keywordCount.get(k) ?? 0) + 1)));
+  const topKeywords = [...keywordCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => `#${k}`);
+  const busiest = [...groups].sort((a, b) => b.list.length - a.list.length)[0];
+
+  const opinions = [...comments]
+    .sort((a, b) => b.likes.length - a.likes.length || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 6)
+    .map((c) => `- ${c.text} (${getUserName(c.authorId)}) [${num.get(c.articleId)}]`);
+
+  return createReport({
+    title,
+    citations,
+    sections: [
+      section(
+        "개요",
+        `${formatDate(first)} ~ ${formatDate(last)} 팀이 등록한 자료 ${articles.length}건(${groups
+          .map((g) => `${g.category} ${g.list.length}건`)
+          .join(" · ")})을 바탕으로 작성하였다.`,
+      ),
+      section(
+        "분야별 주요 동향",
+        groups
+          .flatMap((g) => [`■ ${g.category}`, ...g.list.map((a) => `- ${a.summary.filter(Boolean).slice(0, 2).join(" ") || a.title} [${num.get(a.id)}]`)])
+          .join("\n"),
+      ),
+      section("팀 의견", opinions.length ? opinions.join("\n") : ""),
+      section(
+        "종합",
+        [
+          `총 ${articles.length}건 중 ${busiest.category} 분야가 ${busiest.list.length}건으로 가장 많았다. [${busiest.list.map((a) => num.get(a.id)).join("][")}]`,
+          topKeywords.length ? `자주 나온 키워드: ${topKeywords.join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+      section("시사점"),
+    ],
+  });
 }
 
 /* ───────────── 본문 도구 ───────────── */
@@ -109,64 +145,6 @@ export function reportPlainText(report: Report) {
 
 export function referenceLine(a: Article, n: number) {
   return `[${n}] ${a.title}${a.url ? ` — ${a.url}` : ""} (${formatDate(a.createdAt)}, ${getUserName(a.createdBy)} 등록)`;
-}
-
-/* ───────────── AI 섹션 초안 (mock) ───────────── */
-
-/**
- * 섹션 제목에 맞춰 인용 자료로 초안을 만든다. 인용 자료가 없으면 보고서 제목과 유사한 자료를 찾아 함께 인용한다.
- * 자료에 없는 사실은 만들지 않고, 자료 문장 + [번호]로만 구성한다. 실제 AI 연동 시 /api/ai/draft로 교체.
- */
-export async function draftSection(report: Report, sectionId: string): Promise<{ content: string; citations: string[] }> {
-  await delay(900);
-  const { items } = await listArticles();
-  const byId = new Map(items.map((a) => [a.id, a]));
-  let citations = report.citations.filter((id) => byId.has(id));
-
-  if (citations.length === 0) {
-    const similar = await searchSimilar({ title: report.title, body: reportPlainText(report) });
-    citations = similar.filter((s) => s.percent >= 20).slice(0, 4).map((s) => s.article.id);
-  }
-  const cited = citations.map((id, i) => ({ a: byId.get(id)!, n: i + 1 }));
-  const sec = report.sections.find((s) => s.id === sectionId)!;
-  const h = sec.heading;
-
-  if (!cited.length) {
-    return { content: "※ 보고서 주제와 관련된 자료를 찾지 못했어요. 오른쪽 '자료 찾기'에서 자료를 먼저 인용해주세요.", citations };
-  }
-
-  let lines: string[];
-  if (/개요|목적|배경|서론/.test(h)) {
-    lines = [
-      `본 보고서는 '${report.title}'와 관련하여 팀이 수집한 자료 ${cited.length}건을 바탕으로 작성하였다.`,
-      ...cited.slice(0, 2).map(({ a, n }) => `${a.summary[0] || a.title} [${n}]`),
-    ];
-  } else if (/동향|현황|분석/.test(h)) {
-    const groups = new Map<string, typeof cited>();
-    cited.forEach((c) => groups.set(c.a.category, [...(groups.get(c.a.category) ?? []), c]));
-    lines = [...groups.entries()].flatMap(([cat, list]) => [
-      `■ ${cat}`,
-      ...list.map(({ a, n }) => `- ${a.summary.filter(Boolean).slice(0, 2).join(" ")} [${n}]`),
-    ]);
-  } else if (/시사점|결론|의견/.test(h)) {
-    const opinions = (
-      await Promise.all(cited.map(async ({ a, n }) => (await listComments(a.id)).filter((c) => !c.parentId).map((c) => ({ c, n }))))
-    )
-      .flat()
-      .sort((x, y) => y.c.likes.length - x.c.likes.length)
-      .slice(0, 4);
-    lines = opinions.length
-      ? ["팀 의견을 종합하면 다음과 같다.", ...opinions.map(({ c, n }) => `- ${c.text} (${getUserName(c.authorId)}) [${n}]`)]
-      : cited.slice(0, 3).map(({ a, n }) => `- ${a.summary[2] || a.summary[0]} [${n}]`);
-  } else {
-    lines = [
-      "※ 아래 근거를 바탕으로 구체적인 실행 내용을 직접 작성해주세요. (AI는 자료에 없는 계획을 만들지 않아요)",
-      ...cited.slice(0, 3).map(({ a, n }) => `- 근거: ${a.summary[0] || a.title} [${n}]`),
-      "- 실행 과제: ",
-      "- 담당/일정: ",
-    ];
-  }
-  return { content: lines.join("\n"), citations };
 }
 
 /* ───────────── 내보내기 ───────────── */

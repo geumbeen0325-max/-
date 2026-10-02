@@ -114,23 +114,3 @@ export interface AnalyzeResult {
   category: Category;
   keywords: string[];
 }
-
-export interface BriefingSection {
-  category: Category;
-  articleCount: number;
-  changes: string[];
-  articles: { id: string; title: string }[];
-  opinions: { author: string; text: string }[]; // 팀 의견 (공감 많은 순)
-}
-
-export interface Briefing {
-  id: string;
-  weekStart: string;
-  weekEnd: string;
-  sections: BriefingSection[];
-  overall: string[];
-  content: string; // 보고서 초안 (텍스트)
-  articleCount: number;
-  createdBy: string;
-  createdAt: string;
-}

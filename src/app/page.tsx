@@ -224,7 +224,7 @@ function RecentTimeline({ articles }: { articles: Article[] | null }) {
       <div className="mt-5 rounded-2xl bg-gradient-to-br from-rose-50 to-violet-50 p-4">
         <p className="flex items-start gap-2 text-xs leading-relaxed text-ink-soft">
           <TriangleAlert size={16} className="shrink-0 text-rose-400" />
-          이번 주 주요 이슈를 바탕으로 주간 브리핑을 생성할 수 있어요.
+          이번 주 자료를 모아 보고서로 만들 수 있어요.
         </p>
         <Link
           href="/briefing?auto=1"
@@ -367,9 +367,9 @@ function FeatureCards() {
         <span className="flex-1">
           <span className="block font-bold">주간 동향 브리핑</span>
           <span className="mt-1 block text-xs leading-relaxed text-ink-soft">
-            이번 주 주요 이슈를 모아
+            등록된 자료를 골라
             <br />
-            보고서 초안을 만들어보세요.
+            보고서 하나로 만들어보세요.
           </span>
         </span>
       </Link>

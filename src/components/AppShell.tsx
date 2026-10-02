@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   Bell,
+  Box,
   ChevronDown,
   CirclePlay,
   FileText,
@@ -13,7 +14,6 @@ import {
   House,
   Menu,
   MessageCircle,
-  NotebookPen,
   Plus,
   ScanSearch,
   Search,
@@ -30,7 +30,7 @@ const NAV = [
   { href: "/similar", label: "유사 자료 찾기", icon: ScanSearch },
   { href: "/timeline", label: "이슈 타임라인", icon: GitBranch },
   { href: "/briefing", label: "주간 브리핑", icon: FileText },
-  { href: "/reports", label: "보고서 작성", icon: NotebookPen },
+  { href: "/verify", label: "3D 검증", icon: Box },
 ];
 
 function Logo() {

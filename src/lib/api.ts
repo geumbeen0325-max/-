@@ -6,15 +6,13 @@
  * 삭제는 deleted_at에 시각을 넣는 소프트 삭제 (DB에서 실제 삭제는 막혀 있음).
  */
 import { CURRENT_USER_ID, USERS } from "./seed";
-import { fromArticle, must, supabase, toArticle, toBriefing, toComment, toProject } from "./supabase";
+import { fromArticle, must, supabase, toArticle, toComment, toProject } from "./supabase";
 import {
   CATEGORIES,
   type AnalyzeResult,
   type Article,
   type ArticleInput,
   type ArticleQuery,
-  type Briefing,
-  type BriefingSection,
   type Category,
   type Comment,
   type Project,
@@ -22,7 +20,7 @@ import {
   type SourceKind,
   type User,
 } from "./types";
-import { normalizeTitle, normalizeUrl, toDateInput, weekLabel } from "./utils";
+import { normalizeTitle, normalizeUrl, toDateInput } from "./utils";
 import { buildIndex, rankBySimilarity, type DocInput } from "./similarity";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -392,89 +390,9 @@ export async function analyzeArticle(title: string, body: string): Promise<Analy
   return { summary, category, keywords };
 }
 
-/* ───────────── 주간 브리핑 (8장, 13장) ───────────── */
+/* ───────────── 브리핑 보고서용 ───────────── */
 
-export async function listBriefings(): Promise<Briefing[]> {
-  const rows = must(await supabase.from("briefings").select("*").order("week_start", { ascending: false }).limit(20));
-  return rows.map(toBriefing);
-}
-
-/** POST /api/briefings/weekly */
-export async function generateWeeklyBriefing(start: Date, end: Date): Promise<Briefing> {
-  const [{ items }, comments] = await Promise.all([listArticles({ from: toDateInput(start), to: toDateInput(end) }), loadComments()]);
-
-  const sections: BriefingSection[] = CATEGORIES.map((category) => {
-    const list = items.filter((a) => a.category === category);
-    const ids = new Set(list.map((a) => a.id));
-    // 해당 분야 자료에 달린 팀 의견 중 공감이 많은 순으로 3개
-    const opinions = comments
-      .filter((c) => ids.has(c.articleId))
-      .sort((a, b) => b.likes.length - a.likes.length || b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 3)
-      .map((c) => ({ author: getUserName(c.authorId), text: c.text }));
-    return {
-      category,
-      articleCount: list.length,
-      changes: list.slice(0, 3).map((a) => a.summary[0] || a.title),
-      articles: list.map((a) => ({ id: a.id, title: a.title })),
-      opinions,
-    };
-  });
-
-  const keywordCount = new Map<string, number>();
-  items.forEach((a) => a.keywords.forEach((k) => keywordCount.set(k, (keywordCount.get(k) ?? 0) + 1)));
-  const topKeywords = [...keywordCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => `#${k}`);
-  const busiest = [...sections].sort((a, b) => b.articleCount - a.articleCount)[0];
-
-  const overall = items.length
-    ? [
-        `이번 주 총 ${items.length}건의 자료가 등록되었으며, ${busiest.category} 분야가 ${busiest.articleCount}건으로 가장 많았습니다.`,
-        topKeywords.length ? `주요 키워드는 ${topKeywords.join(", ")} 입니다.` : "",
-        `팀원들이 남긴 의견 ${comments.filter((c) => items.some((a) => a.id === c.articleId)).length}건을 바탕으로 다음 주 중점 모니터링 항목을 확정할 필요가 있습니다.`,
-      ].filter(Boolean)
-    : ["이번 주 등록된 자료가 없습니다."];
-
-  const label = weekLabel(start);
-  const content = [
-    `${label} 동향 브리핑`,
-    `(${toDateInput(start)} ~ ${toDateInput(end)}, 총 ${items.length}건)`,
-    "",
-    ...sections.flatMap((s) => [
-      `[${s.category}] ${s.articleCount}건`,
-      ...(s.articleCount
-        ? [
-            "■ 주요 변화",
-            ...s.changes.map((c) => `- ${c}`),
-            "■ 주요 기사",
-            ...s.articles.map((a) => `- ${a.title}`),
-            "■ 팀 의견",
-            ...(s.opinions.length ? s.opinions.map((o) => `- ${o.text} (${o.author})`) : ["- 아직 의견 없음"]),
-          ]
-        : ["- 등록된 자료 없음"]),
-      "",
-    ]),
-    "[종합]",
-    ...overall.map((o) => `- ${o}`),
-  ].join("\n");
-
-  // 같은 주를 다시 생성하면 덮어쓴다 (week_start unique)
-  const row = must(
-    await supabase
-      .from("briefings")
-      .upsert(
-        {
-          week_start: toDateInput(start),
-          week_end: toDateInput(end),
-          sections,
-          overall,
-          content,
-          article_count: items.length,
-          created_by: CURRENT_USER_ID,
-        },
-        { onConflict: "week_start" },
-      )
-      .select()
-      .single(),
-  );
-  return toBriefing(row);
+/** 삭제되지 않은 모든 댓글 — 여러 자료의 팀 의견을 한 번에 모을 때 */
+export async function listAllComments() {
+  return loadComments();
 }

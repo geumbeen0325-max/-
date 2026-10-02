@@ -4,7 +4,7 @@
  * RLS로 읽기·추가·수정만 허용되어 있다 (삭제는 deleted_at 소프트 삭제).
  */
 import { createClient } from "@supabase/supabase-js";
-import type { Article, Briefing, Comment, Project, Report } from "./types";
+import type { Article, Comment, Project, Report } from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -65,18 +65,6 @@ export const toProject = (r: any): Project => ({
   createdBy: r.created_by,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
-});
-
-export const toBriefing = (r: any): Briefing => ({
-  id: r.id,
-  weekStart: r.week_start,
-  weekEnd: r.week_end,
-  sections: r.sections ?? [],
-  overall: r.overall ?? [],
-  content: r.content,
-  articleCount: r.article_count,
-  createdBy: r.created_by,
-  createdAt: r.created_at,
 });
 
 export const toReport = (r: any): Report => ({

@@ -20,7 +20,8 @@ npm run dev   # http://localhost:3000
 | `/articles/[id]/edit` | 자료 수정 |
 | `/search` | 통합 검색 — 검색어 + 분류 + 기간 동시 필터, 검색어 하이라이트 |
 | `/timeline` | 이슈 타임라인 — 후속 자료로 연결된 이슈 묶음 |
-| `/briefing` | 주간 브리핑 — 주 선택, 분류별 집계, 브리핑 생성, 보고서 초안 편집·복사 |
+| `/briefing` | 주간 브리핑 — 등록 자료를 골라(기간·분류·검색 필터) 보고서 한 건으로 만들기, 항목 편집·복사·Word 저장 |
+| `/verify` | 3D 검증 — 만든 보고서 목록, `/verify/[id]`에서 근거 충실도·관점 균형·최신성 검증 |
 
 ## 자료 넣기 (`/api/extract` — 실제 동작하는 서버 라우트)
 
@@ -53,15 +54,15 @@ npm run dev   # http://localhost:3000
   표시용 %는 코사인 값의 제곱근(관련 기사도 원래 값이 0.2~0.4로 낮게 나오므로). 매우 유사 50%↑ / 유사 35%↑ / 약간 관련 20%↑.
   실제 AI 연동 후 임베딩 유사도로 교체해도 화면은 그대로 쓸 수 있게 반환 형태(`percent`, `shared`)를 고정해 두었다.
 
-## 보고서 작성 (`/reports`)
+## 주간 브리핑 → 보고서 (`/briefing`)
 
-- 템플릿(동향 보고서 / 프로젝트 기획서 / 자유 양식)으로 시작. 주간 브리핑의 "보고서로 만들기", 유사 자료 찾기의 "이 프로젝트로 보고서 쓰기"로도 시작 가능.
-- 편집 화면: 항목별 작성(추가·순서 변경·삭제), 자동 저장. 오른쪽 패널에서 보고서 내용과 비슷한 자료를 실시간 추천 → "요약 인용"/"번호만"으로
-  커서 위치에 `[번호]`와 함께 삽입, 참고 자료 목록 자동 정리(삭제 시 본문 번호 재정렬).
-- 항목별 "AI 초안"(임시 규칙): 인용 자료의 요약·팀 의견으로만 문장을 구성하고, 대응 방안 같은 계획 항목은 근거만 깔고 빈칸으로 남김.
-- 내보내기: Word(.doc), PDF(인쇄 미리보기 → PDF로 저장), 텍스트 복사.
+- 등록된 자료를 기간(이번 주 / 지난 주 / 최근 30일 / 전체)·분류·검색어로 좁혀 체크박스로 고르고, 제목을 정해 보고서 한 건을 만든다 (`createBriefingReport`).
+- 구성: 개요 · 분야별 주요 동향 · 팀 의견 · 종합 · 시사점. 고른 자료를 등록일 순으로 `[번호]` 인용하고, 문장은 자료 요약·팀 의견으로만 만든다(임시 규칙, AI 연동 시 교체). 시사점은 직접 쓰도록 비워 둔다.
+- 만든 보고서는 `reports` 표에 저장되어 같은 화면에서 다시 열어 항목을 고치고, 텍스트 복사·Word(.doc) 저장, 3D 검증으로 이어진다.
+- 홈의 "주간 브리핑 생성"은 이번 주 자료를 모두 고른 상태로, 유사 자료 찾기의 "비슷한 자료로 보고서 만들기"는 유사도 35% 이상 자료를 고른 상태로 연다.
+- 별도 보고서 작성 화면(`/reports`)은 없앴다. `briefings` 표는 더 이상 쓰지 않는다.
 
-### 3D 검증 (`/reports/[id]/verify`)
+### 3D 검증 (`/verify`)
 
 | 축 | 계산 |
 | --- | --- |
@@ -101,7 +102,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 | `getArticle` / `createArticle` / `updateArticle` / `deleteArticle` | `GET·POST·PATCH·DELETE /api/articles` | articles |
 | `checkDuplicate` | 중복 검사 (16장) | articles |
 | `analyzeArticle` | `POST /api/ai/analyze` — 아직 본문 기반 규칙 mock, 본문 40자 미만이면 실패를 흉내냄 | — |
-| `generateWeeklyBriefing` | `POST /api/briefings/weekly` — 같은 주는 덮어씀 | briefings |
+| `createBriefingReport` (`reports.ts`) | `POST /api/briefings/weekly` 대체 — 고른 자료로 보고서 생성 | reports (+ comments) |
 | 댓글·프로젝트·보고서 함수 | — | comments, projects, reports |
 
 검색·중복 검사·유사도는 삭제되지 않은 자료를 모두 불러와 브라우저에서 계산합니다(팀 규모 자료 수 기준). 자료가 수천 건을 넘으면 DB 검색으로 옮길 것.
