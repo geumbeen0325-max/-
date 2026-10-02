@@ -28,17 +28,28 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   letter-spacing: -0.01em;
+}
+
+/* 배경 그라데이션은 화면에 고정된 별도 층으로 한 번만 그린다.
+   (body에 background-attachment: fixed를 쓰면 스크롤마다 화면 전체를 다시 그려 프레임이 떨어진다) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
     radial-gradient(900px 600px at 85% -10%, rgba(255, 192, 220, 0.45), transparent 60%),
     radial-gradient(800px 600px at 45% 0%, rgba(196, 210, 255, 0.5), transparent 60%),
-    radial-gradient(700px 700px at 0% 100%, rgba(214, 200, 255, 0.45), transparent 60%),
-    var(--bg);
-  background-attachment: fixed;
+    radial-gradient(700px 700px at 0% 100%, rgba(214, 200, 255, 0.45), transparent 60%);
+  transform: translateZ(0);
 }
 
 @layer components {
+  /* 카드가 많아 뒤 배경 흐림(backdrop-blur)은 쓰지 않는다 — 스크롤마다 카드 수만큼 다시 계산돼 프레임이 떨어진다.
+     흐림이 없어도 비슷하게 보이도록 흰 배경을 조금 더 불투명하게 둔다. */
   .glass {
-    @apply rounded-2xl border border-white/80 bg-white/65 shadow-[0_8px_30px_-12px_rgba(99,88,180,0.18)] backdrop-blur-xl;
+    @apply rounded-2xl border border-white/80 bg-white/75 shadow-[0_8px_30px_-12px_rgba(99,88,180,0.18)];
   }
   .btn-brand {
     @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[var(--brand-from)] to-[var(--brand-to)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(255,120,180,0.6)] transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
@@ -61,6 +72,9 @@ body {
   html,
   body {
     background: #fff !important;
+  }
+  body::before {
+    display: none;
   }
 }
 
