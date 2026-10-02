@@ -7,11 +7,12 @@ import { ArrowLeft, CircleAlert, Info, Plus } from "lucide-react";
 import { listArticles } from "@/lib/api";
 import { getReport, recordVerification, reportPlainText, saveReport } from "@/lib/reports";
 import { cosineMatrix } from "@/lib/similarity";
-import { mds3 } from "@/lib/space3d";
+import { mds } from "@/lib/mds";
 import type { Article, Report } from "@/lib/types";
 import { CATEGORIES } from "@/lib/types";
 import { CATEGORY_HEX, cn, formatDate } from "@/lib/utils";
 import { verifyReport, type Verification } from "@/lib/verify";
+import Scatter2D, { type L2D, type P2D } from "@/components/Scatter2D";
 import Scatter3D, { type L3D, type P3D } from "@/components/Scatter3D";
 import { CategoryBadge, EmptyState } from "@/components/ui";
 
@@ -37,22 +38,22 @@ export default function VerifyPage({ params }: PageProps<"/reports/[id]/verify">
 
   const verification = useMemo<Verification | null>(() => (report && articles ? verifyReport(report, articles) : null), [report, articles]);
 
-  // 자료 지도: 보고서 + 모든 자료의 유사도 → 3D 좌표
+  // 자료 지도: 보고서 + 모든 자료의 유사도 → 2D 좌표
   const map = useMemo(() => {
     if (!report || !articles || !verification) return null;
     const docs = [{ title: report.title, body: reportPlainText(report) }, ...articles];
-    const coords = mds3(cosineMatrix(docs));
+    const coords = mds(cosineMatrix(docs), 2) as [number, number][];
     const cited = new Set(report.citations);
     const missed = new Set(verification.missed.map((m) => m.result.article.id));
     const pct = new Map(verification.ranking.map((r) => [r.article.id, r.percent]));
 
-    const points: P3D[] = [
-      { id: "__report", pos: coords[0], color: "#ec4899", radius: 14, shape: "star", label: `📄 ${report.title}`, alwaysLabel: true },
+    const points: P2D[] = [
+      { id: "__report", pos: coords[0], color: "#ec4899", radius: 17, shape: "star", label: `📄 ${report.title}`, alwaysLabel: true },
       ...articles.map((a, i) => ({
         id: a.id,
         pos: coords[i + 1],
         color: CATEGORY_HEX[a.category],
-        radius: cited.has(a.id) ? 12 : missed.has(a.id) ? 11 : 8,
+        radius: cited.has(a.id) ? 14 : missed.has(a.id) ? 13 : 10,
         ring: cited.has(a.id) ? "#7c3aed" : missed.has(a.id) ? "#f59e0b" : undefined,
         dim: !cited.has(a.id) && !missed.has(a.id) && (pct.get(a.id) ?? 0) < 20,
         label: a.title,
@@ -60,7 +61,7 @@ export default function VerifyPage({ params }: PageProps<"/reports/[id]/verify">
         alwaysLabel: missed.has(a.id),
       })),
     ];
-    const links: L3D[] = [
+    const links: L2D[] = [
       ...[...cited].map((cid) => ({ from: "__report", to: cid, color: "rgba(124,58,237,0.55)" })),
       ...[...missed].map((mid) => ({ from: "__report", to: mid, color: "rgba(245,158,11,0.7)", dashed: true })),
     ];
@@ -198,7 +199,7 @@ export default function VerifyPage({ params }: PageProps<"/reports/[id]/verify">
             )}
           </div>
           {view === "map" ? (
-            <Scatter3D key="map" points={map.points} links={map.links} height={560} onSelect={(pid) => pid !== "__report" && router.push(`/articles/${pid}`)} />
+            <Scatter2D points={map.points} links={map.links} height={560} onSelect={(pid) => pid !== "__report" && router.push(`/articles/${pid}`)} />
           ) : (
             <Scatter3D key="quality" points={quality.points} links={quality.links} axes={AXES} target={TARGET / 100} height={560} />
           )}

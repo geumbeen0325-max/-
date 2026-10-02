@@ -114,7 +114,7 @@ export function similarityTier(percent: number) {
   return { label: "관련 적음", tone: "none" as const };
 }
 
-/** 문서들 사이의 코사인 유사도 행렬 (3D 자료 지도용) */
+/** 문서들 사이의 코사인 유사도 행렬 (자료 지도용) */
 export function cosineMatrix(docs: DocInput[]): number[][] {
   const tfs = docs.map(termFreq);
   const df = new Map<string, number>();
