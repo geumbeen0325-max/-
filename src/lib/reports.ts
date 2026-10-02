@@ -1,6 +1,6 @@
 /**
  * 보고서 — Supabase reports 표에 저장 (삭제는 deleted_at 소프트 삭제).
- * 주간 브리핑에서 고른 자료로 만들고, 3D 검증에서 근거 활용도를 점검한다.
+ * 보고서 작성 화면에서 고른 자료로 만들고, 3D 검증에서 근거 활용도를 점검한다.
  */
 import { getUserName, listAllComments } from "./api";
 import { CURRENT_USER_ID } from "./seed";
@@ -158,28 +158,6 @@ export function exportText(report: Report, articles: Map<string, Article>) {
     refs.length ? "참고 자료" : "",
     ...refs,
   ].join("\n");
-}
-
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-/** Word에서 열리는 HTML 문서(.doc) */
-export function exportWordHtml(report: Report, articles: Map<string, Article>) {
-  const refs = report.citations.map((id, i) => (articles.get(id) ? referenceLine(articles.get(id)!, i + 1) : `[${i + 1}] (삭제된 자료)`));
-  const body = report.sections
-    .map(
-      (s, i) =>
-        `<h2>${i + 1}. ${esc(s.heading)}</h2>` +
-        s.content
-          .split("\n")
-          .filter((l) => l.trim())
-          .map((l) => `<p>${esc(l)}</p>`)
-          .join(""),
-    )
-    .join("");
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(report.title)}</title>
-<style>body{font-family:'Malgun Gothic',sans-serif;line-height:1.7;font-size:11pt}h1{font-size:20pt}h2{font-size:14pt;margin-top:18pt;border-bottom:1px solid #ccc}.refs p{font-size:9.5pt;color:#555}</style>
-</head><body><h1>${esc(report.title)}</h1><p style="color:#777">${formatDate(report.updatedAt)} · ${esc(getUserName(report.createdBy))}</p>${body}
-${refs.length ? `<h2>참고 자료</h2><div class="refs">${refs.map((r) => `<p>${esc(r)}</p>`).join("")}</div>` : ""}</body></html>`;
 }
 
 export function download(filename: string, content: string, type: string) {

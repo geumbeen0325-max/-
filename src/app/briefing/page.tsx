@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Box, Check, Copy, FileDown, FileText, LoaderCircle, Save, Search, Sparkles, Trash2, X } from "lucide-react";
+import { AlignLeft, Box, Check, Cloud, Copy, FileDown, FileText, FileType, LoaderCircle, Presentation, Save, Search, Sparkles, Trash2, X } from "lucide-react";
 import { listArticles } from "@/lib/api";
-import { createBriefingReport, deleteReport, download, exportText, exportWordHtml, getReport, listReports, saveReport } from "@/lib/reports";
+import { createBriefingReport, deleteReport, exportText, getReport, listReports, saveReport } from "@/lib/reports";
+import { exportReport, isReportFormat, REPORT_FORMATS, type ReportFormat } from "@/lib/report-export";
 import { CATEGORIES, type Article, type Report } from "@/lib/types";
 import { CATEGORY_STYLE, cn, formatDate, toDateInput, weekLabel, weekRange } from "@/lib/utils";
 import PageHeader from "@/components/PageHeader";
@@ -42,6 +43,8 @@ function BriefingView() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(presetIds ? presetIds.split(",") : []));
   const [title, setTitle] = useState(params.get("title") ?? `${weekLabel(weekRange().start)} 동향 보고`);
   const [creating, setCreating] = useState(false);
+  const formatParam = params.get("format");
+  const [format, setFormat] = useState<ReportFormat>(isReportFormat(formatParam) ? formatParam : "word");
 
   const [report, setReport] = useState<Report | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -52,7 +55,7 @@ function BriefingView() {
   useEffect(() => {
     listArticles({ limit: 1000 }).then((r) => {
       setArticles(r.items);
-      // 홈의 "주간 브리핑 생성"으로 들어오면 이번 주 자료를 모두 골라 둔다
+      // 홈의 "보고서 작성하기"로 들어오면 이번 주 자료를 모두 골라 둔다
       if (params.get("auto") === "1") {
         const { from = "", to = "" } = periodRange("week");
         setSelected(new Set(r.items.filter((a) => inRange(a, from, to)).map((a) => a.id)));
@@ -109,7 +112,7 @@ function BriefingView() {
     const r = await createBriefingReport(title, picked);
     setReports(await listReports());
     setCreating(false);
-    router.push(`/briefing?report=${r.id}`);
+    router.push(`/briefing?report=${r.id}&format=${format}`);
   }
 
   function edit(patch: Partial<Report>) {
@@ -143,7 +146,7 @@ function BriefingView() {
 
   return (
     <>
-      <PageHeader title="주간 동향 브리핑" description="등록된 자료 중 필요한 것을 골라 하나의 보고서로 만듭니다." />
+      <PageHeader title="보고서 작성" description="등록된 자료 중 필요한 것을 골라 하나의 보고서로 만듭니다." />
 
       {current ? (
         <ReportEditor
@@ -152,6 +155,8 @@ function BriefingView() {
           dirty={dirty}
           saving={saving}
           copied={copied}
+          format={format}
+          onFormat={setFormat}
           onEdit={edit}
           onSave={save}
           onCopy={copy}
@@ -237,6 +242,9 @@ function BriefingView() {
                 <input value={title} onChange={(e) => setTitle(e.target.value)} className="field mt-1.5 w-full text-sm font-normal" />
               </label>
 
+              <p className="mt-4 text-xs font-semibold text-ink-soft">보고서 형식</p>
+              <FormatPicker value={format} onChange={setFormat} />
+
               <div className="mt-4 grid grid-cols-5 gap-1.5 text-center">
                 <div className="rounded-xl bg-white/70 py-2">
                   <p className="text-lg font-bold">{picked.length}</p>
@@ -270,10 +278,15 @@ function BriefingView() {
 
               <button onClick={create} disabled={creating || !picked.length} className="btn-brand mt-4 w-full py-3">
                 {creating ? <LoaderCircle size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                {creating ? "보고서 만드는 중…" : picked.length ? `자료 ${picked.length}건으로 보고서 만들기` : "왼쪽에서 자료를 골라주세요"}
+                {creating
+                  ? "보고서 만드는 중…"
+                  : picked.length
+                    ? `자료 ${picked.length}건으로 ${REPORT_FORMATS.find((f) => f.key === format)!.label} 보고서 만들기`
+                    : "왼쪽에서 자료를 골라주세요"}
               </button>
               <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
                 고른 자료의 요약과 팀 의견만으로 분야별 동향을 정리해요. 자료에 없는 내용은 만들지 않고, 시사점은 직접 채울 수 있게 비워 둬요.
+                내용을 확인·수정한 뒤 고른 형식으로 내보낼 수 있어요.
               </p>
             </section>
 
@@ -318,6 +331,8 @@ function ReportEditor({
   dirty,
   saving,
   copied,
+  format,
+  onFormat,
   onEdit,
   onSave,
   onCopy,
@@ -328,12 +343,28 @@ function ReportEditor({
   dirty: boolean;
   saving: boolean;
   copied: boolean;
+  format: ReportFormat;
+  onFormat: (f: ReportFormat) => void;
   onEdit: (patch: Partial<Report>) => void;
   onSave: () => void;
   onCopy: () => void;
   onClose: () => void;
 }) {
-  const safe = report.title.replace(/[\\/:*?"<>|]/g, "_");
+  const [exporting, setExporting] = useState(false);
+  const [notice, setNotice] = useState("");
+  const current = REPORT_FORMATS.find((f) => f.key === format)!;
+
+  async function runExport() {
+    setExporting(true);
+    setNotice("");
+    try {
+      setNotice(await exportReport(format, report, byId));
+    } catch (e) {
+      console.error("[report export]", e);
+      setNotice("파일을 만들지 못했어요. 잠시 후 다시 시도해주세요.");
+    }
+    setExporting(false);
+  }
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -367,20 +398,26 @@ function ReportEditor({
       </section>
 
       <aside className="space-y-6 xl:sticky xl:top-4 xl:self-start">
+        <section className="glass p-5">
+          <h2 className="text-sm font-bold">보고서 형식</h2>
+          <FormatPicker value={format} onChange={onFormat} />
+          <button onClick={runExport} disabled={exporting} className="btn-brand mt-3 w-full">
+            {exporting ? <LoaderCircle size={15} className="animate-spin" /> : <FileDown size={15} />}
+            {exporting ? "만드는 중…" : current.action}
+          </button>
+          {dirty && <p className="mt-2 text-[11px] text-amber-600">저장하지 않은 수정 내용도 그대로 반영돼요.</p>}
+          {notice && <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-xs leading-relaxed text-violet-700">{notice}</p>}
+        </section>
+
         <section className="glass space-y-2 p-5">
           <button onClick={onSave} disabled={!dirty || saving} className="btn-brand w-full">
             {saving ? <LoaderCircle size={15} className="animate-spin" /> : <Save size={15} />}
             {saving ? "저장 중…" : dirty ? "변경 내용 저장" : "저장됨"}
           </button>
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={onCopy} className="btn-ghost text-xs">
-              {copied ? <Check size={13} /> : <Copy size={13} />}
-              {copied ? "복사됨" : "텍스트 복사"}
-            </button>
-            <button onClick={() => download(`${safe}.doc`, exportWordHtml(report, byId), "application/msword")} className="btn-ghost text-xs">
-              <FileDown size={13} /> Word 저장
-            </button>
-          </div>
+          <button onClick={onCopy} className="btn-ghost w-full text-xs">
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? "복사됨" : "텍스트 복사"}
+          </button>
           <Link
             href={`/verify/${report.id}`}
             onClick={(e) => dirty && !confirm("저장하지 않은 변경 내용이 있어요. 그래도 검증 화면으로 갈까요?") && e.preventDefault()}
@@ -414,6 +451,44 @@ function ReportEditor({
           </ol>
         </section>
       </aside>
+    </div>
+  );
+}
+
+const FORMAT_ICON: Record<ReportFormat, typeof FileText> = {
+  word: FileText,
+  ppt: Presentation,
+  pdf: FileType,
+  gdocs: Cloud,
+  text: AlignLeft,
+};
+
+function FormatPicker({ value, onChange }: { value: ReportFormat; onChange: (f: ReportFormat) => void }) {
+  const desc = REPORT_FORMATS.find((f) => f.key === value)!.desc;
+  return (
+    <div className="mt-1.5">
+      <div className="grid grid-cols-5 gap-1.5">
+        {REPORT_FORMATS.map((f) => {
+          const Icon = FORMAT_ICON[f.key];
+          const on = f.key === value;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => onChange(f.key)}
+              aria-pressed={on}
+              className={cn(
+                "flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[11px] transition",
+                on ? "bg-violet-100 font-semibold text-violet-700 ring-1 ring-violet-300" : "bg-white/70 text-ink-soft hover:bg-white",
+              )}
+            >
+              <Icon size={17} />
+              <span className="leading-tight">{f.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[11px] text-ink-faint">{desc}</p>
     </div>
   );
 }

@@ -35,10 +35,10 @@ export default function VerifyListPage() {
       ) : reports.length === 0 ? (
         <EmptyState
           title="검증할 보고서가 없어요"
-          description="주간 브리핑에서 자료를 골라 보고서를 먼저 만들어주세요."
+          description="보고서 작성에서 자료를 골라 보고서를 먼저 만들어주세요."
           action={
             <Link href="/briefing" className="btn-brand px-5 py-2.5">
-              <FileText size={15} /> 주간 브리핑으로 가기
+              <FileText size={15} /> 보고서 작성으로 가기
             </Link>
           }
         />

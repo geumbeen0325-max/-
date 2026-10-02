@@ -230,7 +230,7 @@ function RecentTimeline({ articles }: { articles: Article[] | null }) {
           href="/briefing?auto=1"
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-400 to-fuchsia-400 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105"
         >
-          주간 브리핑 생성 <ArrowRight size={14} />
+          보고서 작성하기 <ArrowRight size={14} />
         </Link>
       </div>
     </section>
@@ -365,7 +365,7 @@ function FeatureCards() {
           <FileText size={22} />
         </span>
         <span className="flex-1">
-          <span className="block font-bold">주간 동향 브리핑</span>
+          <span className="block font-bold">보고서 작성</span>
           <span className="mt-1 block text-xs leading-relaxed text-ink-soft">
             등록된 자료를 골라
             <br />
@@ -382,7 +382,7 @@ function QuickLinks() {
     { href: "/search", label: "통합 검색", icon: Search },
     { href: "/articles/new", label: "중복 등록 경고", icon: Link2 },
     { href: "/timeline", label: "이슈 타임라인", icon: GitBranch },
-    { href: "/briefing", label: "주간 브리핑", icon: FileText },
+    { href: "/briefing", label: "보고서 작성", icon: FileText },
   ];
   return (
     <section className="glass p-5">
